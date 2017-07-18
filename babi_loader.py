@@ -41,8 +41,8 @@ class BabiDataset(Dataset):
             self.load()
         else:
             self.QA = adict()
-            self.QA.VOCAB = {'<EOS>': 0}
-            self.QA.IVOCAB = {0: '<EOS>'}
+            self.QA.VOCAB = {'<PAD>': 0, '<EOS>': 1}
+            self.QA.IVOCAB = {0: '<PAD>', 1: '<EOS>'}
             self.build_vocab(raw_train + raw_test)
             self.save()
         self.train = self.get_indexed_qa(raw_train)
@@ -73,9 +73,9 @@ class BabiDataset(Dataset):
         contexts = []
         answers = []
         for qa in unindexed:
-            context = [c.lower().split() for c in qa['C']]
+            context = [c.lower().split() + ['<EOS>'] for c in qa['C']]
             context = [[self.QA.VOCAB[token] for token in sentence] for sentence in context]
-            question = qa['Q'].lower().split()
+            question = qa['Q'].lower().split() + ['<EOS>']
             question = [self.QA.VOCAB[token] for token in question]
             answer = self.QA.VOCAB[qa['A']]
             
@@ -96,7 +96,7 @@ class BabiDataset(Dataset):
 
 
 def get_raw_babi(taskid):
-    paths = glob('babi_data/en-10k/qa{}*'.format(taskid))
+    paths = glob('babi_data/en-10k/qa{}_*'.format(taskid))
     for path in paths:
         if 'train' in path:
             with open(path, 'r') as fp:
