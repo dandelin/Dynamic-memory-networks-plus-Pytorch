@@ -77,7 +77,7 @@ class BabiDataset(Dataset):
             context = [[self.QA.VOCAB[token] for token in sentence] for sentence in context]
             question = qa['Q'].lower().split() + ['<EOS>']
             question = [self.QA.VOCAB[token] for token in question]
-            answer = self.QA.VOCAB[qa['A']]
+            answer = self.QA.VOCAB[qa['A'].lower()]
             
             contexts.append(context)
             questions.append(question)

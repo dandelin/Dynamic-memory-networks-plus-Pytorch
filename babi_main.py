@@ -40,7 +40,7 @@ class AttentionGRUCell(nn.Module):
         self.U = nn.Parameter(init.xavier_normal(torch.Tensor(hidden_size, hidden_size)))
         self.b = nn.Parameter(torch.ones(hidden_size,))
 
-    def forward(self, fact, g, hidden):
+    def forward(self, fact, hidden, g):
         '''
         fact.size() -> (#batch, #hidden = #embedding)
         c.size() -> (#hidden, ) -> (#batch, #hidden = #embedding)
@@ -79,7 +79,7 @@ class AttentionGRU(nn.Module):
             g = G[:, sid]
             if sid == 0:
                 C = C.unsqueeze(0).expand_as(fact)
-            C = self.AGRUCell(fact, g, C)
+            C = self.AGRUCell(fact, C, g)
         return C
 
 class EpisodicMemory(nn.Module):
@@ -96,7 +96,7 @@ class EpisodicMemory(nn.Module):
     def make_interaction(self, facts, questions, prevM):
         '''
         facts.size() -> (#batch, #sentence, #hidden = #embedding)
-        questions.size() -> (#batch, #sentence = 1, #embedding)
+        questions.size() -> (#batch, 1, #hidden)
         prevM.size() -> (#batch, #sentence = 1, #hidden = #embedding)
         z.size() -> (#batch, #sentence, 4 x #embedding)
         G.size() -> (#batch, #sentence)
@@ -124,7 +124,7 @@ class EpisodicMemory(nn.Module):
     def forward(self, facts, questions, prevM):
         '''
         facts.size() -> (#batch, #sentence, #hidden = #embedding)
-        questions.size() -> (#batch, #sentence = 1, #embedding)
+        questions.size() -> (#batch, #sentence = 1, #hidden)
         prevM.size() -> (#batch, #sentence = 1, #hidden = #embedding)
         G.size() -> (#batch, #sentence)
         C.size() -> (#batch, #hidden)
@@ -141,17 +141,18 @@ class EpisodicMemory(nn.Module):
 class QuestionModule(nn.Module):
     def __init__(self, vocab_size, hidden_size):
         super(QuestionModule, self).__init__()
+        self.gru = nn.GRU(hidden_size, hidden_size, batch_first=True)
 
     def forward(self, questions, word_embedding):
         '''
         questions.size() -> (#batch, #token)
         word_embedding() -> (#batch, #token, #embedding)
-        position_encoding() -> (#batch, #sentence = 1, #embedding)
+        gru() -> (1, #batch, #hidden)
         '''
         questions = Variable(questions.long().cuda())
         questions = word_embedding(questions)
-        questions = questions.unsqueeze(1)
-        questions = position_encoding(questions)
+        _, questions = self.gru(questions)
+        questions = questions.transpose(0, 1)
         return questions
 
 class InputModule(nn.Module):
@@ -207,22 +208,22 @@ class DMNPlus(nn.Module):
 
         self.input_module = InputModule(vocab_size, hidden_size)
         self.question_module = QuestionModule(vocab_size, hidden_size)
-        # for hop in range(num_hop):
-        #     setattr(self, f'memory{hop}', EpisodicMemory(hidden_size))
-        self.memory = EpisodicMemory(hidden_size)
+        for hop in range(num_hop):
+            setattr(self, f'memory{hop}', EpisodicMemory(hidden_size))
+        # self.memory = EpisodicMemory(hidden_size)
         self.answer_module = AnswerModule(vocab_size, hidden_size)
 
     def forward(self, contexts, questions):
         '''
         contexts.size() -> (#batch, #sentence, #token) -> (#batch, #sentence, #hidden = #embedding)
-        questions.size() -> (#batch, #token) -> (#batch, #sentence = 1, #embedding)
+        questions.size() -> (#batch, #token) -> (#batch, 1, #hidden)
         '''
         facts = self.input_module(contexts, self.word_embedding)
         questions = self.question_module(questions, self.word_embedding)
         M = questions
         for hop in range(self.num_hop):
-            # episode = getattr(self, f'memory{hop}')
-            M = self.memory(facts, questions, M)
+            episode = getattr(self, f'memory{hop}')
+            M = episode(facts, questions, M)
         preds = self.answer_module(M, questions)
         return preds
 
@@ -246,14 +247,22 @@ class DMNPlus(nn.Module):
         reg_loss = 0
         for param in self.parameters():
             reg_loss += 0.001 * torch.sum(param * param)
-        return loss + reg_loss
+        acc = self.get_accuracy(preds, targets)
+        return loss + reg_loss, acc
+
+    def get_accuracy(self, preds, targets):
+        _, pred_ids = torch.max(preds, dim=1)
+        corrects = (pred_ids.data.cpu() == answers)
+        acc = torch.mean(corrects.float())
+        return acc
 
 if __name__ == '__main__':
-    for task_id in range(1, 21):
+    for task_id in range(16, 21):
         dset_train = BabiDataset(task_id, is_train=True)
         dset_test = BabiDataset(task_id, is_train=False)
         vocab_size = len(dset_train.QA.VOCAB)
         hidden_size = 80
+        print(vocab_size)
         
         model = DMNPlus(hidden_size, vocab_size, num_hop=3, qa=dset_train.QA)
         model.cuda()
@@ -261,10 +270,10 @@ if __name__ == '__main__':
 
         for epoch in range(256):
             train_loader = DataLoader(
-                dset_train, batch_size=100, shuffle=True, collate_fn=pad_collate
+                dset_train, batch_size=128, shuffle=True, collate_fn=pad_collate
             )
             test_loader = DataLoader(
-                dset_test, batch_size=len(dset_test), shuffle=False, collate_fn=pad_collate
+                dset_test, batch_size=128, shuffle=False, collate_fn=pad_collate
             )
 
             early_stopping_cnt = 0
@@ -277,46 +286,34 @@ if __name__ == '__main__':
                     optim.zero_grad()
                     contexts, questions, answers = data
 
-                    loss = model.get_loss(contexts, questions, answers)
+                    loss, acc = model.get_loss(contexts, questions, answers)
                     loss.backward()
 
-                    if batch_idx == 0 and epoch == 0:
-                        with open('init.txt', 'w', encoding='utf-8') as fp:
-                            for name, param in model.state_dict().items():
-                                if 'bias' not in name:
-                                    fp.write(name + '\n')
-                                    fp.write(repr(param))
-
-                    if batch_idx == 50:
-                        with open('after.txt', 'w',  encoding='utf-8') as fp:
-                            for name, param in model.state_dict().items():
-                                if 'bias' not in name:
-                                    fp.write(name + '\n')
-                                    fp.write(repr(param))
-
-                    print(f'[Task {task_id}] Training... loss : {loss.data[0]}, batch_idx : {batch_idx}, epoch : {epoch}')
+                    if batch_idx % 20 == 0:
+                        print(f'[Task {task_id}] Training... loss : {loss.data[0]}, acc : {acc}, batch_idx : {batch_idx}, epoch : {epoch}')
                     optim.step()
                     # ww = model.memory.AGRU.AGRUCell.Ur.grad
                     # wr = model.memory.next_mem.weight.grad
                     # print(ww, wr)
                 
                 model.eval()
+                total_acc = 0
+                cnt = 0
                 for batch_idx, data in enumerate(test_loader):
                     contexts, questions, answers = data
+                    _, acc = model.get_loss(contexts, questions, answers)
+                    total_acc += acc
+                    cnt += 1
 
-                    preds = model(contexts, questions)
-                    _, pred_ids = torch.max(preds, dim=1)
-                    corrects = (pred_ids.data.cpu() == answers)
-                    acc = torch.mean(corrects.float())
+                total_acc = total_acc / cnt
+                if total_acc > best_acc:
+                    best_acc = total_acc
+                    early_stopping_cnt = 0
+                else:
+                    early_stopping_cnt += 1
+                    if early_stopping_cnt > 20:
+                        early_stopping_flag = True
 
-                    if acc > best_acc:
-                        best_acc = acc
-                        early_stopping_cnt = 0
-                    else:
-                        early_stopping_cnt += 1
-                        if early_stopping_cnt > 20:
-                            early_stopping_flag = True
-
-                    print(f'[Task {task_id}] Validation Accuracy : {acc}, epoch : {epoch}')
+                print(f'[Task {task_id}] Validation Accuracy : {acc}, epoch : {epoch}')
             else:
                 print(f'[Task {task_id}] Early Stopping at Epoch {best_acc}, Valid Accuracy : {epoch}')
