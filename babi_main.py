@@ -202,7 +202,7 @@ class DMNPlus(nn.Module):
         super(DMNPlus, self).__init__()
         self.num_hop = num_hop
         self.qa = qa
-        self.word_embedding = nn.Embedding(vocab_size, hidden_size).cuda()
+        self.word_embedding = nn.Embedding(vocab_size, hidden_size, padding_idx=0).cuda()
         init.uniform(self.word_embedding.state_dict()['weight'], a=-(3**0.5), b=3**0.5)
         self.criterion = nn.CrossEntropyLoss()
 
@@ -257,7 +257,7 @@ class DMNPlus(nn.Module):
         return acc
 
 if __name__ == '__main__':
-    for task_id in range(16, 21):
+    for task_id in range(1, 21):
         dset_train = BabiDataset(task_id, is_train=True)
         dset_test = BabiDataset(task_id, is_train=False)
         vocab_size = len(dset_train.QA.VOCAB)
@@ -270,7 +270,7 @@ if __name__ == '__main__':
 
         for epoch in range(256):
             train_loader = DataLoader(
-                dset_train, batch_size=128, shuffle=True, collate_fn=pad_collate
+                dset_train, batch_size=128, shuffle=False, collate_fn=pad_collate
             )
             test_loader = DataLoader(
                 dset_test, batch_size=128, shuffle=False, collate_fn=pad_collate
@@ -282,19 +282,20 @@ if __name__ == '__main__':
             model.train()
 
             if not early_stopping_flag:
+                total_acc = 0
+                cnt = 0
                 for batch_idx, data in enumerate(train_loader):
                     optim.zero_grad()
                     contexts, questions, answers = data
 
                     loss, acc = model.get_loss(contexts, questions, answers)
                     loss.backward()
+                    total_acc += acc
+                    cnt += 1
 
                     if batch_idx % 20 == 0:
-                        print(f'[Task {task_id}] Training... loss : {loss.data[0]}, acc : {acc}, batch_idx : {batch_idx}, epoch : {epoch}')
+                        print(f'[Task {task_id}] Training... loss : {loss.data[0]}, acc : {total_acc / cnt}, batch_idx : {batch_idx}, epoch : {epoch}')
                     optim.step()
-                    # ww = model.memory.AGRU.AGRUCell.Ur.grad
-                    # wr = model.memory.next_mem.weight.grad
-                    # print(ww, wr)
                 
                 model.eval()
                 total_acc = 0
@@ -314,6 +315,6 @@ if __name__ == '__main__':
                     if early_stopping_cnt > 20:
                         early_stopping_flag = True
 
-                print(f'[Task {task_id}] Validation Accuracy : {acc}, epoch : {epoch}')
+                print(f'[Task {task_id}] Validation Accuracy : {total_acc}, epoch : {epoch}')
             else:
                 print(f'[Task {task_id}] Early Stopping at Epoch {best_acc}, Valid Accuracy : {epoch}')
