@@ -37,16 +37,14 @@ class BabiDataset(Dataset):
         self.vocab_path = 'dataset/babi{}_vocab.pkl'.format(task_id)
         self.is_train = is_train
         raw_train, raw_test = get_raw_babi(task_id)
-        if os.path.isfile(self.vocab_path):
-            self.load()
-        else:
-            self.QA = adict()
-            self.QA.VOCAB = {'<PAD>': 0, '<EOS>': 1}
-            self.QA.IVOCAB = {0: '<PAD>', 1: '<EOS>'}
-            self.build_vocab(raw_train + raw_test)
-            self.save()
+        self.QA = adict()
+        self.QA.VOCAB = {'<PAD>': 0, '<EOS>': 1}
+        self.QA.IVOCAB = {0: '<PAD>', 1: '<EOS>'}
         self.train = self.get_indexed_qa(raw_train)
         self.test = self.get_indexed_qa(raw_test)
+    
+    def set_train(self, key):
+        self.is_train = key
 
     def __len__(self):
         if self.is_train:
@@ -74,29 +72,36 @@ class BabiDataset(Dataset):
         answers = []
         for qa in unindexed:
             context = [c.lower().split() + ['<EOS>'] for c in qa['C']]
+            
+            for con in context:
+                for token in con:
+                    self.build_vocab(token)
             context = [[self.QA.VOCAB[token] for token in sentence] for sentence in context]
             question = qa['Q'].lower().split() + ['<EOS>']
+            
+            for token in question:
+                self.build_vocab(token)
             question = [self.QA.VOCAB[token] for token in question]
+            
+            self.build_vocab(qa['A'].lower())
             answer = self.QA.VOCAB[qa['A'].lower()]
+            
             
             contexts.append(context)
             questions.append(question)
             answers.append(answer)
         return (contexts, questions, answers)
     
-    def build_vocab(self, raw_babi):
-        lowered = raw_babi.lower()
-        tokens = re.findall('[a-z]+|\.', lowered)
-        types = set(tokens)
-        for t in types:
-            if not t in self.QA.VOCAB:
-                next_index = len(self.QA.VOCAB)
-                self.QA.VOCAB[t] = next_index
-                self.QA.IVOCAB[next_index] = t
+    def build_vocab(self, token):
+        if not token in self.QA.VOCAB:
+            next_index = len(self.QA.VOCAB)
+            self.QA.VOCAB[token] = next_index
+            self.QA.IVOCAB[next_index] = token
 
 
 def get_raw_babi(taskid):
     paths = glob('babi_data/en-10k/qa{}_*'.format(taskid))
+    print(paths)
     for path in paths:
         if 'train' in path:
             with open(path, 'r') as fp:
@@ -120,7 +125,7 @@ def get_unindexed_qa(raw_babi):
     for i, line in enumerate(babi):
         id = int(line[0:line.find(' ')])
         if id == 1:
-            task = {"C": [], "Q": "", "A": "", "S": ""} 
+            task = {"C": "", "Q": "", "A": "", "S": ""} 
             counter = 0
             id_map = {}
             
@@ -129,7 +134,7 @@ def get_unindexed_qa(raw_babi):
         line = line[line.find(' ')+1:]
         # if not a question
         if line.find('?') == -1:
-            task["C"].append(line)
+            task["C"] += line + '<line>'
             id_map[id] = counter
             counter += 1     
         else:
@@ -140,7 +145,9 @@ def get_unindexed_qa(raw_babi):
             task["S"] = [] # Supporting facts
             for num in tmp[2].split():
                 task["S"].append(id_map[int(num.strip())])
-            tasks.append(task.copy())
+            tc = task.copy()
+            tc['C'] = tc['C'].split('<line>')[:-1]
+            tasks.append(tc)
     return tasks
 
 if __name__ == '__main__':

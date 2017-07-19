@@ -35,10 +35,10 @@ class AttentionGRUCell(nn.Module):
         self.hidden_size = hidden_size
         self.Wr = nn.Parameter(init.xavier_normal(torch.Tensor(input_size, hidden_size)))
         self.Ur = nn.Parameter(init.xavier_normal(torch.Tensor(hidden_size, hidden_size)))
-        self.br = nn.Parameter(torch.ones(hidden_size,))
+        self.br = Variable(torch.ones(hidden_size,).cuda())
         self.W = nn.Parameter(init.xavier_normal(torch.Tensor(input_size, hidden_size)))
         self.U = nn.Parameter(init.xavier_normal(torch.Tensor(hidden_size, hidden_size)))
-        self.b = nn.Parameter(torch.ones(hidden_size,))
+        self.b = Variable(torch.ones(hidden_size,).cuda())
 
     def forward(self, fact, hidden, g):
         '''
@@ -208,9 +208,9 @@ class DMNPlus(nn.Module):
 
         self.input_module = InputModule(vocab_size, hidden_size)
         self.question_module = QuestionModule(vocab_size, hidden_size)
-        for hop in range(num_hop):
-            setattr(self, f'memory{hop}', EpisodicMemory(hidden_size))
-        # self.memory = EpisodicMemory(hidden_size)
+        # for hop in range(num_hop):
+        #     setattr(self, f'memory{hop}', EpisodicMemory(hidden_size))
+        self.memory = EpisodicMemory(hidden_size)
         self.answer_module = AnswerModule(vocab_size, hidden_size)
 
     def forward(self, contexts, questions):
@@ -222,8 +222,8 @@ class DMNPlus(nn.Module):
         questions = self.question_module(questions, self.word_embedding)
         M = questions
         for hop in range(self.num_hop):
-            episode = getattr(self, f'memory{hop}')
-            M = episode(facts, questions, M)
+            # episode = getattr(self, f'memory{hop}')
+            M = self.memory(facts, questions, M)
         preds = self.answer_module(M, questions)
         return preds
 
@@ -258,22 +258,20 @@ class DMNPlus(nn.Module):
 
 if __name__ == '__main__':
     for task_id in range(1, 21):
-        dset_train = BabiDataset(task_id, is_train=True)
-        dset_test = BabiDataset(task_id, is_train=False)
-        vocab_size = len(dset_train.QA.VOCAB)
+        dset = BabiDataset(task_id)
+        vocab_size = len(dset.QA.VOCAB)
         hidden_size = 80
         print(vocab_size)
         
-        model = DMNPlus(hidden_size, vocab_size, num_hop=3, qa=dset_train.QA)
+        model = DMNPlus(hidden_size, vocab_size, num_hop=3, qa=dset.QA)
         model.cuda()
-        optim = torch.optim.Adam(model.parameters())
+        
 
         for epoch in range(256):
+            optim = torch.optim.Adam(model.parameters())
+            dset.set_train(True)
             train_loader = DataLoader(
-                dset_train, batch_size=128, shuffle=False, collate_fn=pad_collate
-            )
-            test_loader = DataLoader(
-                dset_test, batch_size=128, shuffle=False, collate_fn=pad_collate
+                dset, batch_size=128, shuffle=False, collate_fn=pad_collate
             )
 
             early_stopping_cnt = 0
@@ -297,6 +295,11 @@ if __name__ == '__main__':
                         print(f'[Task {task_id}] Training... loss : {loss.data[0]}, acc : {total_acc / cnt}, batch_idx : {batch_idx}, epoch : {epoch}')
                     optim.step()
                 
+                dset.set_train(False)
+                test_loader = DataLoader(
+                    dset, batch_size=128, shuffle=False, collate_fn=pad_collate
+                )
+
                 model.eval()
                 total_acc = 0
                 cnt = 0
@@ -316,5 +319,7 @@ if __name__ == '__main__':
                         early_stopping_flag = True
 
                 print(f'[Task {task_id}] Validation Accuracy : {total_acc}, epoch : {epoch}')
+                with open('log.txt', 'a') as fp:
+                    fp.write(f'[Task {task_id}] Validation Accuracy : {total_acc}, epoch : {epoch}' + '\n')
             else:
                 print(f'[Task {task_id}] Early Stopping at Epoch {best_acc}, Valid Accuracy : {epoch}')
