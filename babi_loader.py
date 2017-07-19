@@ -100,7 +100,7 @@ class BabiDataset(Dataset):
 
 
 def get_raw_babi(taskid):
-    paths = glob('babi_data/en-10k/qa{}_*'.format(taskid))
+    paths = glob('data/en-10k/qa{}_*'.format(taskid))
     print(paths)
     for path in paths:
         if 'train' in path:

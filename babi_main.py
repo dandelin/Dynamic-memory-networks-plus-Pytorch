@@ -1,5 +1,4 @@
 from babi_loader import BabiDataset, adict, pad_collate
-from visualize import make_dot
 import itertools
 
 import os
@@ -9,7 +8,6 @@ import torch.nn.functional as F
 import torch.nn.init as init
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
-from PIL import Image
 
 import numpy as np
 
@@ -208,9 +206,9 @@ class DMNPlus(nn.Module):
 
         self.input_module = InputModule(vocab_size, hidden_size)
         self.question_module = QuestionModule(vocab_size, hidden_size)
-        # for hop in range(num_hop):
-        #     setattr(self, f'memory{hop}', EpisodicMemory(hidden_size))
-        self.memory = EpisodicMemory(hidden_size)
+        for hop in range(num_hop):
+            setattr(self, f'memory{hop}', EpisodicMemory(hidden_size))
+        # self.memory = EpisodicMemory(hidden_size)
         self.answer_module = AnswerModule(vocab_size, hidden_size)
 
     def forward(self, contexts, questions):
@@ -222,8 +220,8 @@ class DMNPlus(nn.Module):
         questions = self.question_module(questions, self.word_embedding)
         M = questions
         for hop in range(self.num_hop):
-            # episode = getattr(self, f'memory{hop}')
-            M = self.memory(facts, questions, M)
+            episode = getattr(self, f'memory{hop}')
+            M = episode(facts, questions, M)
         preds = self.answer_module(M, questions)
         return preds
 
@@ -321,5 +319,7 @@ if __name__ == '__main__':
                 print(f'[Task {task_id}] Validation Accuracy : {total_acc}, epoch : {epoch}')
                 with open('log.txt', 'a') as fp:
                     fp.write(f'[Task {task_id}] Validation Accuracy : {total_acc}, epoch : {epoch}' + '\n')
+                if total_acc == 1.0:
+                    break
             else:
                 print(f'[Task {task_id}] Early Stopping at Epoch {best_acc}, Valid Accuracy : {epoch}')

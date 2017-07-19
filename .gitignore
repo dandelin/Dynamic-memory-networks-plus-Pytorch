@@ -1,3 +1,4 @@
 dataset/
-babi_data/
+data/
 __pycache__/
+log.txt
