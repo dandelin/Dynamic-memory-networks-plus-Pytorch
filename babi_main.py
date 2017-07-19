@@ -39,15 +39,8 @@ class AttentionGRUCell(nn.Module):
         self.W = nn.Parameter(init.xavier_normal(torch.Tensor(input_size, hidden_size)))
         self.U = nn.Parameter(init.xavier_normal(torch.Tensor(hidden_size, hidden_size)))
         self.b = nn.Parameter(torch.ones(hidden_size,))
-        self.init_hidden()
-    
-    def init_hidden(self):
-        '''
-        c.size() -> (#hidden, )
-        '''
-        self.c = Variable(torch.zeros(self.hidden_size)).cuda()
 
-    def forward(self, fact, g):
+    def forward(self, fact, g, hidden):
         '''
         fact.size() -> (#batch, #hidden = #embedding)
         c.size() -> (#hidden, ) -> (#batch, #hidden = #embedding)
@@ -55,7 +48,7 @@ class AttentionGRUCell(nn.Module):
         h_tilda.size() -> (#batch, #hidden = #embedding)
         g.size() -> (#batch, )
         '''
-        c = self.c.unsqueeze(0).expand_as(fact)
+        c = hidden
         br = self.br.unsqueeze(0).expand_as(fact)
         b = self.br.unsqueeze(0).expand_as(fact)
 
@@ -80,10 +73,13 @@ class AttentionGRU(nn.Module):
         C.size() -> (#batch, #hidden)
         '''
         batch_num, sen_num, embedding_size = facts.size()
+        C = Variable(torch.zeros(self.hidden_size)).cuda()
         for sid in range(sen_num):
             fact = facts[:, sid, :]
             g = G[:, sid]
-            C = self.AGRUCell(fact, g)
+            if sid == 0:
+                C = C.unsqueeze(0).expand_as(fact)
+            C = self.AGRUCell(fact, g, C)
         return C
 
 class EpisodicMemory(nn.Module):
@@ -136,7 +132,7 @@ class EpisodicMemory(nn.Module):
         '''
         G = self.make_interaction(facts, questions, prevM)
         C = self.AGRU(facts, G)
-        concat = torch.cat([prevM.squeeze(), C, questions.squeeze()], dim=1)
+        concat = torch.cat([prevM.squeeze(1), C, questions.squeeze(1)], dim=1)
         next_mem = F.relu(self.next_mem(concat))
         next_mem = next_mem.unsqueeze(1)
         return next_mem
@@ -196,7 +192,7 @@ class AnswerModule(nn.Module):
 
     def forward(self, prevM, questions):
         prevM = self.dropout(prevM)
-        concat = torch.cat([prevM, questions], dim=2).squeeze()
+        concat = torch.cat([prevM, questions], dim=2).squeeze(1)
         z = self.z(concat)
         return z
 
@@ -207,6 +203,7 @@ class DMNPlus(nn.Module):
         self.qa = qa
         self.word_embedding = nn.Embedding(vocab_size, hidden_size).cuda()
         init.uniform(self.word_embedding.state_dict()['weight'], a=-(3**0.5), b=3**0.5)
+        self.criterion = nn.CrossEntropyLoss()
 
         self.input_module = InputModule(vocab_size, hidden_size)
         self.question_module = QuestionModule(vocab_size, hidden_size)
@@ -242,11 +239,14 @@ class DMNPlus(nn.Module):
                 s = ' '.join([self.qa.IVOCAB[elem] for elem in sentence])
                 print(f'{n}th of batch, {s}')
 
-def get_loss(preds, targets, model):
-    criterion = nn.CrossEntropyLoss()
-    targets = Variable(targets.cuda())
-    loss = criterion(preds, targets)
-    return loss
+    def get_loss(self, contexts, questions, targets):
+        targets = Variable(targets.cuda())
+        preds = self.forward(contexts, questions)
+        loss = self.criterion(preds, targets)
+        reg_loss = 0
+        for param in self.parameters():
+            reg_loss += 0.001 * torch.sum(param * param)
+        return loss + reg_loss
 
 if __name__ == '__main__':
     for task_id in range(1, 21):
@@ -257,11 +257,11 @@ if __name__ == '__main__':
         
         model = DMNPlus(hidden_size, vocab_size, num_hop=3, qa=dset_train.QA)
         model.cuda()
-        optim = torch.optim.Adam(model.parameters(), weight_decay=0.001)
+        optim = torch.optim.Adam(model.parameters())
 
         for epoch in range(256):
             train_loader = DataLoader(
-                dset_train, batch_size=100, shuffle=False, collate_fn=pad_collate
+                dset_train, batch_size=100, shuffle=True, collate_fn=pad_collate
             )
             test_loader = DataLoader(
                 dset_test, batch_size=len(dset_test), shuffle=False, collate_fn=pad_collate
@@ -277,8 +277,7 @@ if __name__ == '__main__':
                     optim.zero_grad()
                     contexts, questions, answers = data
 
-                    preds = model(contexts, questions)
-                    loss = get_loss(preds, answers, model)
+                    loss = model.get_loss(contexts, questions, answers)
                     loss.backward()
 
                     if batch_idx == 0 and epoch == 0:
