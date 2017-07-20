@@ -169,10 +169,10 @@ class InputModule(nn.Module):
 
         contexts = contexts.view(batch_num, sen_num, token_num, -1)
         contexts = position_encoding(contexts)
+        contexts = self.dropout(contexts)
 
         facts, hdn = self.gru(contexts)
         facts = facts[:, :, :hidden_size] + facts[:, :, hidden_size:]
-        facts = self.dropout(facts)
         return facts
 
 class AnswerModule(nn.Module):
@@ -183,8 +183,8 @@ class AnswerModule(nn.Module):
         self.dropout = nn.Dropout(0.1)
 
     def forward(self, prevM, questions):
-        prevM = self.dropout(prevM)
         concat = torch.cat([prevM, questions], dim=2).squeeze(1)
+        concat = self.dropout(concat)
         z = self.z(concat)
         return z
 
@@ -245,7 +245,7 @@ class DMNPlus(nn.Module):
         return acc
 
 if __name__ == '__main__':
-    for task_id in range(1, 21):
+    for task_id in range(2, 21):
         dset = BabiDataset(task_id)
         vocab_size = len(dset.QA.VOCAB)
         hidden_size = 80
@@ -305,6 +305,7 @@ if __name__ == '__main__':
                 total_acc = total_acc / cnt
                 if total_acc > best_acc:
                     best_acc = total_acc
+                    best_state = model.state_dict()
                     early_stopping_cnt = 0
                 else:
                     early_stopping_cnt += 1
@@ -333,6 +334,7 @@ if __name__ == '__main__':
             questions = Variable(questions.long().cuda())
             answers = Variable(answers.cuda())
 
+            model.state_dict().update(best_state)
             _, acc = model.get_loss(contexts, questions, answers)
             test_acc += acc
             cnt += 1
