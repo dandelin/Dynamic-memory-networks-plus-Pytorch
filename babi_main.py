@@ -229,11 +229,12 @@ class DMNPlus(nn.Module):
                 print(f'{n}th of batch, {s}')
 
     def get_loss(self, contexts, questions, targets):
-        preds = self.forward(contexts, questions)
-        loss = self.criterion(preds, targets)
+        output = self.forward(contexts, questions)
+        loss = self.criterion(output, targets)
         reg_loss = 0
         for param in self.parameters():
             reg_loss += 0.001 * torch.sum(param * param)
+        preds = F.softmax(output)
         acc = self.get_accuracy(preds, targets)
         return loss + reg_loss, acc
 
@@ -258,13 +259,12 @@ if __name__ == '__main__':
 
 
         for epoch in range(100):
-            dset.set_train(True)
+            dset.set_mode('train')
             train_loader = DataLoader(
                 dset, batch_size=100, shuffle=True, collate_fn=pad_collate
             )
 
             model.train()
-
             if not early_stopping_flag:
                 total_acc = 0
                 cnt = 0
@@ -284,15 +284,15 @@ if __name__ == '__main__':
                         print(f'[Task {task_id}, Epoch {epoch}] [Training] loss : {loss.data[0]: {10}.{8}}, acc : {total_acc / cnt: {5}.{4}}, batch_idx : {batch_idx}')
                     optim.step()
 
-                dset.set_train(False)
-                test_loader = DataLoader(
+                dset.set_mode('valid')
+                valid_loader = DataLoader(
                     dset, batch_size=100, shuffle=False, collate_fn=pad_collate
                 )
 
                 model.eval()
                 total_acc = 0
                 cnt = 0
-                for batch_idx, data in enumerate(test_loader):
+                for batch_idx, data in enumerate(valid_loader):
                     contexts, questions, answers = data
                     contexts = Variable(contexts.long().cuda())
                     questions = Variable(questions.long().cuda())
@@ -318,3 +318,24 @@ if __name__ == '__main__':
                     break
             else:
                 print(f'[Task {task_id}] Early Stopping at Epoch {epoch}, Valid Accuracy : {best_acc: {5}.{4}}')
+                break
+
+        dset.set_mode('test')
+        test_loader = DataLoader(
+            dset, batch_size=100, shuffle=False, collate_fn=pad_collate
+        )
+        test_acc = 0
+        cnt = 0
+
+        for batch_idx, data in enumerate(test_loader):
+            contexts, questions, answers = data
+            contexts = Variable(contexts.long().cuda())
+            questions = Variable(questions.long().cuda())
+            answers = Variable(answers.cuda())
+
+            _, acc = model.get_loss(contexts, questions, answers)
+            test_acc += acc
+            cnt += 1
+        print(f'[Task {task_id}, Epoch {epoch}] [Test] Accuracy : {test_acc / cnt: {5}.{4}}')
+        with open('log.txt', 'a') as fp:
+            fp.write(f'[Task {task_id}, Epoch {epoch}] [Test] Accuracy : {total_acc: {5}.{4}}' + '\n')

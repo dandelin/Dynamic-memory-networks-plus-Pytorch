@@ -30,27 +30,36 @@ def pad_collate(batch):
     return default_collate(batch)
 
 class BabiDataset(Dataset):
-    def __init__(self, task_id, is_train=True):
+    def __init__(self, task_id, mode='train'):
         self.vocab_path = 'dataset/babi{}_vocab.pkl'.format(task_id)
-        self.is_train = is_train
+        self.mode = mode
         raw_train, raw_test = get_raw_babi(task_id)
         self.QA = adict()
         self.QA.VOCAB = {'<PAD>': 0, '<EOS>': 1}
         self.QA.IVOCAB = {0: '<PAD>', 1: '<EOS>'}
         self.train = self.get_indexed_qa(raw_train)
+        self.valid = [self.train[i][int(-len(self.train[i])/10):] for i in range(3)]
+        self.train = [self.train[i][:int(9 * len(self.train[i])/10)] for i in range(3)]
         self.test = self.get_indexed_qa(raw_test)
 
-    def set_train(self, key):
-        self.is_train = key
+    def set_mode(self, mode):
+        self.mode = mode
 
     def __len__(self):
-        if self.is_train:
+        if self.mode == 'train':
             return len(self.train[0])
-        else:
-            return len(self.test[0])
+        elif self.mode == 'valid':
+            return len(self.valid[0])
+        elif self.mode == 'test':
+            return len(self.valid[0])
 
     def __getitem__(self, index):
-        contexts, questions, answers = self.train if self.is_train else self.test
+        if self.mode == 'train':
+            contexts, questions, answers = self.train
+        elif self.mode == 'valid':
+            contexts, questions, answers = self.valid
+        elif self.mode == 'test':
+            contexts, questions, answers = self.test
         return contexts[index], questions[index], answers[index]
 
     def get_indexed_qa(self, raw_babi):
