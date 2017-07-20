@@ -1,15 +1,10 @@
-from babi_loader import BabiDataset, adict, pad_collate
-import itertools
-
-import os
+from babi_loader import BabiDataset, pad_collate
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
-
-import numpy as np
 
 def position_encoding(embedded_sentence):
     '''
@@ -33,10 +28,10 @@ class AttentionGRUCell(nn.Module):
         self.hidden_size = hidden_size
         self.Wr = nn.Parameter(init.xavier_normal(torch.Tensor(input_size, hidden_size)))
         self.Ur = nn.Parameter(init.xavier_normal(torch.Tensor(hidden_size, hidden_size)))
-        self.br = Variable(torch.ones(hidden_size,).cuda())
+        self.br = nn.Parameter(init.constant(torch.Tensor(hidden_size), 1))
         self.W = nn.Parameter(init.xavier_normal(torch.Tensor(input_size, hidden_size)))
         self.U = nn.Parameter(init.xavier_normal(torch.Tensor(hidden_size, hidden_size)))
-        self.b = Variable(torch.ones(hidden_size,).cuda())
+        self.b = nn.Parameter(init.constant(torch.Tensor(hidden_size), 1))
 
     def forward(self, fact, hidden, g):
         '''
@@ -116,7 +111,7 @@ class EpisodicMemory(nn.Module):
         G = self.z2(G)
         G = G.view(batch_num, -1)
         G = F.softmax(G)
-        
+
         return G
 
     def forward(self, facts, questions, prevM):
@@ -147,7 +142,6 @@ class QuestionModule(nn.Module):
         word_embedding() -> (#batch, #token, #embedding)
         gru() -> (1, #batch, #hidden)
         '''
-        questions = Variable(questions.long().cuda())
         questions = word_embedding(questions)
         _, questions = self.gru(questions)
         questions = questions.transpose(0, 1)
@@ -168,7 +162,6 @@ class InputModule(nn.Module):
         position_encoding() -> (#batch, #sentence, #embedding)
         facts.size() -> (#batch, #sentence, #hidden = #embedding)
         '''
-        contexts = Variable(contexts.long().cuda())
         batch_num, sen_num, token_num = contexts.size()
 
         contexts = contexts.view(batch_num, -1)
@@ -206,9 +199,7 @@ class DMNPlus(nn.Module):
 
         self.input_module = InputModule(vocab_size, hidden_size)
         self.question_module = QuestionModule(vocab_size, hidden_size)
-        for hop in range(num_hop):
-            setattr(self, f'memory{hop}', EpisodicMemory(hidden_size))
-        # self.memory = EpisodicMemory(hidden_size)
+        self.memory = EpisodicMemory(hidden_size)
         self.answer_module = AnswerModule(vocab_size, hidden_size)
 
     def forward(self, contexts, questions):
@@ -220,8 +211,7 @@ class DMNPlus(nn.Module):
         questions = self.question_module(questions, self.word_embedding)
         M = questions
         for hop in range(self.num_hop):
-            episode = getattr(self, f'memory{hop}')
-            M = episode(facts, questions, M)
+            M = self.memory(facts, questions, M)
         preds = self.answer_module(M, questions)
         return preds
 
@@ -239,7 +229,6 @@ class DMNPlus(nn.Module):
                 print(f'{n}th of batch, {s}')
 
     def get_loss(self, contexts, questions, targets):
-        targets = Variable(targets.cuda())
         preds = self.forward(contexts, questions)
         loss = self.criterion(preds, targets)
         reg_loss = 0
@@ -250,7 +239,7 @@ class DMNPlus(nn.Module):
 
     def get_accuracy(self, preds, targets):
         _, pred_ids = torch.max(preds, dim=1)
-        corrects = (pred_ids.data.cpu() == answers)
+        corrects = (pred_ids.data == answers.data)
         acc = torch.mean(corrects.float())
         return acc
 
@@ -260,21 +249,21 @@ if __name__ == '__main__':
         vocab_size = len(dset.QA.VOCAB)
         hidden_size = 80
         print(vocab_size)
-        
+
         model = DMNPlus(hidden_size, vocab_size, num_hop=3, qa=dset.QA)
         model.cuda()
-        
+        early_stopping_cnt = 0
+        early_stopping_flag = False
+        best_acc = 0
+
 
         for epoch in range(256):
             optim = torch.optim.Adam(model.parameters())
             dset.set_train(True)
             train_loader = DataLoader(
-                dset, batch_size=128, shuffle=False, collate_fn=pad_collate
+                dset, batch_size=100, shuffle=True, collate_fn=pad_collate
             )
 
-            early_stopping_cnt = 0
-            early_stopping_flag = False
-            best_acc = 0
             model.train()
 
             if not early_stopping_flag:
@@ -283,6 +272,9 @@ if __name__ == '__main__':
                 for batch_idx, data in enumerate(train_loader):
                     optim.zero_grad()
                     contexts, questions, answers = data
+                    contexts = Variable(contexts.long().cuda())
+                    questions = Variable(questions.long().cuda())
+                    answers = Variable(answers.cuda())
 
                     loss, acc = model.get_loss(contexts, questions, answers)
                     loss.backward()
@@ -292,10 +284,10 @@ if __name__ == '__main__':
                     if batch_idx % 20 == 0:
                         print(f'[Task {task_id}] Training... loss : {loss.data[0]}, acc : {total_acc / cnt}, batch_idx : {batch_idx}, epoch : {epoch}')
                     optim.step()
-                
+
                 dset.set_train(False)
                 test_loader = DataLoader(
-                    dset, batch_size=128, shuffle=False, collate_fn=pad_collate
+                    dset, batch_size=100, shuffle=False, collate_fn=pad_collate
                 )
 
                 model.eval()
@@ -303,6 +295,10 @@ if __name__ == '__main__':
                 cnt = 0
                 for batch_idx, data in enumerate(test_loader):
                     contexts, questions, answers = data
+                    contexts = Variable(contexts.long().cuda())
+                    questions = Variable(questions.long().cuda())
+                    answers = Variable(answers.cuda())
+
                     _, acc = model.get_loss(contexts, questions, answers)
                     total_acc += acc
                     cnt += 1
