@@ -248,17 +248,16 @@ if __name__ == '__main__':
         dset = BabiDataset(task_id)
         vocab_size = len(dset.QA.VOCAB)
         hidden_size = 80
-        print(vocab_size)
 
         model = DMNPlus(hidden_size, vocab_size, num_hop=3, qa=dset.QA)
         model.cuda()
         early_stopping_cnt = 0
         early_stopping_flag = False
         best_acc = 0
+        optim = torch.optim.Adam(model.parameters())
 
 
-        for epoch in range(256):
-            optim = torch.optim.Adam(model.parameters())
+        for epoch in range(100):
             dset.set_train(True)
             train_loader = DataLoader(
                 dset, batch_size=100, shuffle=True, collate_fn=pad_collate
@@ -282,7 +281,7 @@ if __name__ == '__main__':
                     cnt += 1
 
                     if batch_idx % 20 == 0:
-                        print(f'[Task {task_id}] Training... loss : {loss.data[0]}, acc : {total_acc / cnt}, batch_idx : {batch_idx}, epoch : {epoch}')
+                        print(f'[Task {task_id}, Epoch {epoch}] [Training] loss : {loss.data[0]: {10}.{8}}, acc : {total_acc / cnt: {5}.{2}}, batch_idx : {batch_idx}')
                     optim.step()
 
                 dset.set_train(False)
@@ -312,10 +311,11 @@ if __name__ == '__main__':
                     if early_stopping_cnt > 20:
                         early_stopping_flag = True
 
-                print(f'[Task {task_id}] Validation Accuracy : {total_acc}, epoch : {epoch}')
+                print(f'[Task {task_id}, Epoch {epoch}] [Training] loss : {loss.data[0]: {10}.{8}}, acc : {total_acc / cnt: {5}.{2}}, batch_idx : {batch_idx}')
+                print(f'[Task {task_id}, Epoch {epoch}] [Validate] Accuracy : {total_acc: {5}.{2}}')
                 with open('log.txt', 'a') as fp:
-                    fp.write(f'[Task {task_id}] Validation Accuracy : {total_acc}, epoch : {epoch}' + '\n')
+                    fp.write(f'[Task {task_id}, Epoch {epoch}] [Validate] Accuracy : {total_acc: {5}.{2}}' + '\n')
                 if total_acc == 1.0:
                     break
             else:
-                print(f'[Task {task_id}] Early Stopping at Epoch {best_acc}, Valid Accuracy : {epoch}')
+                print(f'[Task {task_id}] Early Stopping at Epoch {epoch}, Valid Accuracy : {best_acc: {5}.{2}}')

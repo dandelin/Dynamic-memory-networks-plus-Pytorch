@@ -2,11 +2,8 @@ from glob import glob
 from torch.utils.data.dataset import Dataset
 from torch.utils.data import DataLoader
 from torch.utils.data.dataloader import default_collate
-import torch.nn.utils.rnn as rnn_utils
-import os
 import re
 import numpy as np
-import pickle
 
 class adict(dict):
     def __init__(self, *av, **kav):
@@ -42,7 +39,7 @@ class BabiDataset(Dataset):
         self.QA.IVOCAB = {0: '<PAD>', 1: '<EOS>'}
         self.train = self.get_indexed_qa(raw_train)
         self.test = self.get_indexed_qa(raw_test)
-    
+
     def set_train(self, key):
         self.is_train = key
 
@@ -51,20 +48,11 @@ class BabiDataset(Dataset):
             return len(self.train[0])
         else:
             return len(self.test[0])
-    
+
     def __getitem__(self, index):
         contexts, questions, answers = self.train if self.is_train else self.test
         return contexts[index], questions[index], answers[index]
 
-    def save(self):
-        os.makedirs(os.path.dirname(self.vocab_path), exist_ok=True)
-        with open(self.vocab_path, 'wb') as fp:
-            pickle.dump(self.QA, fp, pickle.HIGHEST_PROTOCOL)
-
-    def load(self):
-        with open(self.vocab_path, 'rb') as fp:
-            self.QA = pickle.load(fp)
-    
     def get_indexed_qa(self, raw_babi):
         unindexed = get_unindexed_qa(raw_babi)
         questions = []
@@ -72,26 +60,26 @@ class BabiDataset(Dataset):
         answers = []
         for qa in unindexed:
             context = [c.lower().split() + ['<EOS>'] for c in qa['C']]
-            
+
             for con in context:
                 for token in con:
                     self.build_vocab(token)
             context = [[self.QA.VOCAB[token] for token in sentence] for sentence in context]
             question = qa['Q'].lower().split() + ['<EOS>']
-            
+
             for token in question:
                 self.build_vocab(token)
             question = [self.QA.VOCAB[token] for token in question]
-            
+
             self.build_vocab(qa['A'].lower())
             answer = self.QA.VOCAB[qa['A'].lower()]
-            
-            
+
+
             contexts.append(context)
             questions.append(question)
             answers.append(answer)
         return (contexts, questions, answers)
-    
+
     def build_vocab(self, token):
         if not token in self.QA.VOCAB:
             next_index = len(self.QA.VOCAB)
@@ -101,7 +89,6 @@ class BabiDataset(Dataset):
 
 def get_raw_babi(taskid):
     paths = glob('data/en-10k/qa{}_*'.format(taskid))
-    print(paths)
     for path in paths:
         if 'train' in path:
             with open(path, 'r') as fp:
@@ -125,10 +112,10 @@ def get_unindexed_qa(raw_babi):
     for i, line in enumerate(babi):
         id = int(line[0:line.find(' ')])
         if id == 1:
-            task = {"C": "", "Q": "", "A": "", "S": ""} 
+            task = {"C": "", "Q": "", "A": "", "S": ""}
             counter = 0
             id_map = {}
-            
+
         line = line.strip()
         line = line.replace('.', ' . ')
         line = line[line.find(' ')+1:]
@@ -136,7 +123,7 @@ def get_unindexed_qa(raw_babi):
         if line.find('?') == -1:
             task["C"] += line + '<line>'
             id_map[id] = counter
-            counter += 1     
+            counter += 1
         else:
             idx = line.find('?')
             tmp = line[idx+1:].split('\t')
