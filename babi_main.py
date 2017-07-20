@@ -311,7 +311,6 @@ if __name__ == '__main__':
                     if early_stopping_cnt > 20:
                         early_stopping_flag = True
 
-                print(f'[Task {task_id}, Epoch {epoch}] [Training] loss : {loss.data[0]: {10}.{8}}, acc : {total_acc / cnt: {5}.{2}}, batch_idx : {batch_idx}')
                 print(f'[Task {task_id}, Epoch {epoch}] [Validate] Accuracy : {total_acc: {5}.{2}}')
                 with open('log.txt', 'a') as fp:
                     fp.write(f'[Task {task_id}, Epoch {epoch}] [Validate] Accuracy : {total_acc: {5}.{2}}' + '\n')
