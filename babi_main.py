@@ -281,7 +281,7 @@ if __name__ == '__main__':
                     cnt += 1
 
                     if batch_idx % 20 == 0:
-                        print(f'[Task {task_id}, Epoch {epoch}] [Training] loss : {loss.data[0]: {10}.{8}}, acc : {total_acc / cnt: {5}.{2}}, batch_idx : {batch_idx}')
+                        print(f'[Task {task_id}, Epoch {epoch}] [Training] loss : {loss.data[0]: {10}.{8}}, acc : {total_acc / cnt: {5}.{4}}, batch_idx : {batch_idx}')
                     optim.step()
 
                 dset.set_train(False)
@@ -311,10 +311,10 @@ if __name__ == '__main__':
                     if early_stopping_cnt > 20:
                         early_stopping_flag = True
 
-                print(f'[Task {task_id}, Epoch {epoch}] [Validate] Accuracy : {total_acc: {5}.{2}}')
+                print(f'[Task {task_id}, Epoch {epoch}] [Validate] Accuracy : {total_acc: {5}.{4}}')
                 with open('log.txt', 'a') as fp:
-                    fp.write(f'[Task {task_id}, Epoch {epoch}] [Validate] Accuracy : {total_acc: {5}.{2}}' + '\n')
+                    fp.write(f'[Task {task_id}, Epoch {epoch}] [Validate] Accuracy : {total_acc: {5}.{4}}' + '\n')
                 if total_acc == 1.0:
                     break
             else:
-                print(f'[Task {task_id}] Early Stopping at Epoch {epoch}, Valid Accuracy : {best_acc: {5}.{2}}')
+                print(f'[Task {task_id}] Early Stopping at Epoch {epoch}, Valid Accuracy : {best_acc: {5}.{4}}')
