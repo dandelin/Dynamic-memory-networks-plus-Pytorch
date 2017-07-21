@@ -12,12 +12,12 @@ def position_encoding(embedded_sentence):
     l.size() -> (#sentence, #embedding)
     output.size() -> (#batch, #sentence, #embedding)
     '''
-    _, slen, _, elen = embedded_sentence.size()
+    _, _, slen, elen = embedded_sentence.size()
 
-    l = [[(1 - s/slen) - (e/elen) * (1 - 2*s/slen) for e in range(elen)] for s in range(slen)]
+    l = [[(1 - (s+1)/slen) - ((e+1)/elen) * (1 - 2*(s+1)/slen) for e in range(elen)] for s in range(slen)]
     l = torch.FloatTensor(l)
     l = l.unsqueeze(0) # for #batch
-    l = l.unsqueeze(2) # for #token
+    l = l.unsqueeze(1) # for #sen
     l = l.expand_as(embedded_sentence)
     weighted = embedded_sentence * Variable(l.cuda())
     return torch.sum(weighted, dim=2).squeeze(2) # sum with tokens
@@ -150,8 +150,8 @@ class InputModule(nn.Module):
     def __init__(self, vocab_size, hidden_size):
         super(InputModule, self).__init__()
         self.gru = nn.GRU(hidden_size, hidden_size, bidirectional=True, batch_first=True)
-        for name, param in self.gru.state_dict().items():
-            if 'weight' in name: init.xavier_normal(param)
+        # for name, param in self.gru.state_dict().items():
+        #     if 'weight' in name: init.xavier_normal(param)
         self.dropout = nn.Dropout(0.1)
 
     def forward(self, contexts, word_embedding):
@@ -222,9 +222,14 @@ class DMNPlus(nn.Module):
                     s = ' '.join([self.qa.IVOCAB[elem.data[0]] for elem in sentence])
                     print(f'{n}th of batch, {i}th sentence, {s}')
         elif len(var.size()) == 2:
-            # var -> n s #token
+            # var -> n x #token
             for n, sentence in enumerate(var):
                 s = ' '.join([self.qa.IVOCAB[elem.data[0]] for elem in sentence])
+                print(f'{n}th of batch, {s}')
+        elif len(var.size()) == 1:
+            # var -> n (one token per batch)
+            for n, token in enumerate(var):
+                s = self.qa.IVOCAB[token.data[0]]
                 print(f'{n}th of batch, {s}')
 
     def get_loss(self, contexts, questions, targets):
@@ -234,14 +239,14 @@ class DMNPlus(nn.Module):
         for param in self.parameters():
             reg_loss += 0.001 * torch.sum(param * param)
         preds = F.softmax(output)
-        acc = self.get_accuracy(preds, targets)
-        return loss + reg_loss, acc
-
-    def get_accuracy(self, preds, targets):
         _, pred_ids = torch.max(preds, dim=1)
         corrects = (pred_ids.data == answers.data)
         acc = torch.mean(corrects.float())
-        return acc
+        # self.interpret_indexed_tensor(contexts[0].unsqueeze(0))
+        # self.interpret_indexed_tensor(questions[0].unsqueeze(0))
+        # self.interpret_indexed_tensor(targets[0].unsqueeze(0))
+        # self.interpret_indexed_tensor(pred_ids[0].unsqueeze(0))
+        return loss + reg_loss, acc
 
 if __name__ == '__main__':
     for task_id in range(1, 21):
