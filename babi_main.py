@@ -26,14 +26,16 @@ class AttentionGRUCell(nn.Module):
     def __init__(self, input_size, hidden_size):
         super(AttentionGRUCell, self).__init__()
         self.hidden_size = hidden_size
-        self.Wr = nn.Parameter(init.xavier_normal(torch.Tensor(input_size, hidden_size)))
-        self.Ur = nn.Parameter(init.xavier_normal(torch.Tensor(hidden_size, hidden_size)))
-        self.br = nn.Parameter(init.constant(torch.Tensor(hidden_size), 1))
-        self.W = nn.Parameter(init.xavier_normal(torch.Tensor(input_size, hidden_size)))
-        self.U = nn.Parameter(init.xavier_normal(torch.Tensor(hidden_size, hidden_size)))
-        self.b = nn.Parameter(init.constant(torch.Tensor(hidden_size), 1))
+        self.Wr = nn.Linear(input_size, hidden_size)
+        init.xavier_normal(self.Wr.state_dict()['weight'])
+        self.Ur = nn.Linear(hidden_size, hidden_size)
+        init.xavier_normal(self.Ur.state_dict()['weight'])
+        self.W = nn.Linear(input_size, hidden_size)
+        init.xavier_normal(self.W.state_dict()['weight'])
+        self.U = nn.Linear(hidden_size, hidden_size)
+        init.xavier_normal(self.U.state_dict()['weight'])
 
-    def forward(self, fact, hidden, g):
+    def forward(self, fact, C, g):
         '''
         fact.size() -> (#batch, #hidden = #embedding)
         c.size() -> (#hidden, ) -> (#batch, #hidden = #embedding)
@@ -41,14 +43,11 @@ class AttentionGRUCell(nn.Module):
         h_tilda.size() -> (#batch, #hidden = #embedding)
         g.size() -> (#batch, )
         '''
-        c = hidden
-        br = self.br.unsqueeze(0).expand_as(fact)
-        b = self.br.unsqueeze(0).expand_as(fact)
 
-        r = F.sigmoid(fact @ self.Wr + c @ self.Ur + br)
-        h_tilda = F.tanh(fact @ self.W + r * (c @ self.U) + b)
+        r = F.sigmoid(self.Wr(fact) + self.Ur(C))
+        h_tilda = F.tanh(self.W(fact) + r * self.U(C))
         g = g.unsqueeze(1).expand_as(h_tilda)
-        h = g * h_tilda + (1 - g) * c
+        h = g * h_tilda + (1 - g) * C
         return h
 
 class AttentionGRU(nn.Module):
@@ -195,7 +194,7 @@ class DMNPlus(nn.Module):
         self.qa = qa
         self.word_embedding = nn.Embedding(vocab_size, hidden_size, padding_idx=0).cuda()
         init.uniform(self.word_embedding.state_dict()['weight'], a=-(3**0.5), b=3**0.5)
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.CrossEntropyLoss(size_average=False)
 
         self.input_module = InputModule(vocab_size, hidden_size)
         self.question_module = QuestionModule(vocab_size, hidden_size)
@@ -215,17 +214,17 @@ class DMNPlus(nn.Module):
         preds = self.answer_module(M, questions)
         return preds
 
-    def interpret_indexed_tensor(self, tensor):
-        if len(tensor.size()) == 3:
-            # tensor -> n x #sen x #token
-            for n, sentences in enumerate(tensor):
+    def interpret_indexed_tensor(self, var):
+        if len(var.size()) == 3:
+            # var -> n x #sen x #token
+            for n, sentences in enumerate(var):
                 for i, sentence in enumerate(sentences):
-                    s = ' '.join([self.qa.IVOCAB[elem] for elem in sentence])
+                    s = ' '.join([self.qa.IVOCAB[elem.data[0]] for elem in sentence])
                     print(f'{n}th of batch, {i}th sentence, {s}')
-        elif len(tensor.size()) == 2:
-            # tensor -> n s #token
-            for n, sentence in enumerate(tensor):
-                s = ' '.join([self.qa.IVOCAB[elem] for elem in sentence])
+        elif len(var.size()) == 2:
+            # var -> n s #token
+            for n, sentence in enumerate(var):
+                s = ' '.join([self.qa.IVOCAB[elem.data[0]] for elem in sentence])
                 print(f'{n}th of batch, {s}')
 
     def get_loss(self, contexts, questions, targets):
@@ -245,7 +244,7 @@ class DMNPlus(nn.Module):
         return acc
 
 if __name__ == '__main__':
-    for task_id in range(2, 21):
+    for task_id in range(1, 21):
         dset = BabiDataset(task_id)
         vocab_size = len(dset.QA.VOCAB)
         hidden_size = 80
@@ -258,7 +257,7 @@ if __name__ == '__main__':
         optim = torch.optim.Adam(model.parameters())
 
 
-        for epoch in range(100):
+        for epoch in range(256):
             dset.set_mode('train')
             train_loader = DataLoader(
                 dset, batch_size=100, shuffle=True, collate_fn=pad_collate
