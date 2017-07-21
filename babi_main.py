@@ -14,7 +14,7 @@ def position_encoding(embedded_sentence):
     '''
     _, _, slen, elen = embedded_sentence.size()
 
-    l = [[(1 - (s+1)/slen) - ((e+1)/elen) * (1 - 2*(s+1)/slen) for e in range(elen)] for s in range(slen)]
+    l = [[(1 - s/(slen-1)) - (e/(elen-1)) * (1 - 2*s/(slen-1)) for e in range(elen)] for s in range(slen)]
     l = torch.FloatTensor(l)
     l = l.unsqueeze(0) # for #batch
     l = l.unsqueeze(1) # for #sen
@@ -181,9 +181,9 @@ class AnswerModule(nn.Module):
         init.xavier_normal(self.z.state_dict()['weight'])
         self.dropout = nn.Dropout(0.1)
 
-    def forward(self, prevM, questions):
-        concat = torch.cat([prevM, questions], dim=2).squeeze(1)
-        concat = self.dropout(concat)
+    def forward(self, M, questions):
+        M = self.dropout(M)
+        concat = torch.cat([M, questions], dim=2).squeeze(1)
         z = self.z(concat)
         return z
 
