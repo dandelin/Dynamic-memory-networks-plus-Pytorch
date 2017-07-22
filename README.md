@@ -23,29 +23,33 @@ Run the main python code
 
 ## Benchmarks
 
-This repo currently has failed to reproduce the paper's result for Task 6 (yes/no), 17 (positional reasoning), 19 (path finding).  
+Low accuracies compared to Xiong et al's are may due to different weight decay setting or lack of run time (I ran the model single time for each task).
 
-Other low accuracies compared to Xiong et al's are may due to different weight decay setting or lack of run time (I ran the model single time for each task).
+> On some tasks, the accuracy was not stable across multiple
+runs. This was particularly problematic on QA3, QA17,
+and QA18. To solve this, we repeated training 10 times
+using random initializations and evaluated the model that
+achieved the lowest validation set loss.
 
 | Task ID | This Repo | Xiong et al |
 | :---: | :---: | :---: |
 | 1 | 100% | 100% |
-| 2 | 92.8% | 99.7% |
+| 2 | 96.3% | 99.7% |
 | 3 | 87.8% | 98.9% |
-| 4 | 89.5% | 100% |
-| 5 | 83.1% | 99.5% |
-| 6 | 50.3% | 100% |
-| 7 | 96.1% | 97.6% |
-| 8 | 97.9% | 100% |
+| 4 | 100% | 100% |
+| 5 | 98.9% | 99.5% |
+| 6 | 100%% | 100% |
+| 7 | 97.2% | 97.6% |
+| 8 | 100% | 100% |
 | 9 | 100% | 100% |
 | 10 | 100% | 100% |
 | 11 | 100% | 100% |
 | 12 | 100% | 100% |
-| 13 | 98.9% | 100% |
-| 14 | 97.7% | 99.8% |
-| 15 | 90.3% | 100% |
+| 13 | 100% | 100% |
+| 14 | 98.6% | 99.8% |
+| 15 | 100% | 100% |
 | 16 | 47.4% | 54.7% |
-| 17 | 61.4% | 95.8% |
-| 18 | 91% | 97.9% |
-| 19 | 10.1% | 100% |
-| 20 | 96.9% | 100% |
+| 17 | 65.5% | 95.8% |
+| 18 | 92.7% | 97.9% |
+| 19 | 99.4% | 100% |
+| 20 | 100% | 100% |
