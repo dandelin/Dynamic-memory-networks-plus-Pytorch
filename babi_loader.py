@@ -53,7 +53,7 @@ class BabiDataset(Dataset):
         elif self.mode == 'valid':
             return len(self.valid[0])
         elif self.mode == 'test':
-            return len(self.valid[0])
+            return len(self.test[0])
 
     def __getitem__(self, index):
         if self.mode == 'train':

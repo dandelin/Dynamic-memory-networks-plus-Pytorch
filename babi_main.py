@@ -150,8 +150,8 @@ class InputModule(nn.Module):
     def __init__(self, vocab_size, hidden_size):
         super(InputModule, self).__init__()
         self.gru = nn.GRU(hidden_size, hidden_size, bidirectional=True, batch_first=True)
-        # for name, param in self.gru.state_dict().items():
-        #     if 'weight' in name: init.xavier_normal(param)
+        for name, param in self.gru.state_dict().items():
+            if 'weight' in name: init.xavier_normal(param)
         self.dropout = nn.Dropout(0.1)
 
     def forward(self, contexts, word_embedding):
@@ -192,7 +192,7 @@ class DMNPlus(nn.Module):
         super(DMNPlus, self).__init__()
         self.num_hop = num_hop
         self.qa = qa
-        self.word_embedding = nn.Embedding(vocab_size, hidden_size, padding_idx=0).cuda()
+        self.word_embedding = nn.Embedding(vocab_size, hidden_size, padding_idx=0, sparse=True).cuda()
         init.uniform(self.word_embedding.state_dict()['weight'], a=-(3**0.5), b=3**0.5)
         self.criterion = nn.CrossEntropyLoss(size_average=False)
 
@@ -242,10 +242,6 @@ class DMNPlus(nn.Module):
         _, pred_ids = torch.max(preds, dim=1)
         corrects = (pred_ids.data == answers.data)
         acc = torch.mean(corrects.float())
-        # self.interpret_indexed_tensor(contexts[0].unsqueeze(0))
-        # self.interpret_indexed_tensor(questions[0].unsqueeze(0))
-        # self.interpret_indexed_tensor(targets[0].unsqueeze(0))
-        # self.interpret_indexed_tensor(pred_ids[0].unsqueeze(0))
         return loss + reg_loss, acc
 
 if __name__ == '__main__':
@@ -265,7 +261,7 @@ if __name__ == '__main__':
         for epoch in range(256):
             dset.set_mode('train')
             train_loader = DataLoader(
-                dset, batch_size=100, shuffle=True, collate_fn=pad_collate
+                dset, batch_size=128, shuffle=True, collate_fn=pad_collate
             )
 
             model.train()
@@ -275,14 +271,15 @@ if __name__ == '__main__':
                 for batch_idx, data in enumerate(train_loader):
                     optim.zero_grad()
                     contexts, questions, answers = data
+                    batch_size = contexts.size()[0]
                     contexts = Variable(contexts.long().cuda())
                     questions = Variable(questions.long().cuda())
                     answers = Variable(answers.cuda())
 
                     loss, acc = model.get_loss(contexts, questions, answers)
                     loss.backward()
-                    total_acc += acc
-                    cnt += 1
+                    total_acc += acc * batch_size
+                    cnt += batch_size
 
                     if batch_idx % 20 == 0:
                         print(f'[Task {task_id}, Epoch {epoch}] [Training] loss : {loss.data[0]: {10}.{8}}, acc : {total_acc / cnt: {5}.{4}}, batch_idx : {batch_idx}')
@@ -290,7 +287,7 @@ if __name__ == '__main__':
 
                 dset.set_mode('valid')
                 valid_loader = DataLoader(
-                    dset, batch_size=100, shuffle=False, collate_fn=pad_collate
+                    dset, batch_size=128, shuffle=False, collate_fn=pad_collate
                 )
 
                 model.eval()
@@ -298,13 +295,14 @@ if __name__ == '__main__':
                 cnt = 0
                 for batch_idx, data in enumerate(valid_loader):
                     contexts, questions, answers = data
+                    batch_size = contexts.size()[0]
                     contexts = Variable(contexts.long().cuda())
                     questions = Variable(questions.long().cuda())
                     answers = Variable(answers.cuda())
 
                     _, acc = model.get_loss(contexts, questions, answers)
-                    total_acc += acc
-                    cnt += 1
+                    total_acc += acc * batch_size
+                    cnt += batch_size
 
                 total_acc = total_acc / cnt
                 if total_acc > best_acc:
@@ -327,21 +325,22 @@ if __name__ == '__main__':
 
         dset.set_mode('test')
         test_loader = DataLoader(
-            dset, batch_size=100, shuffle=False, collate_fn=pad_collate
+            dset, batch_size=128, shuffle=False, collate_fn=pad_collate
         )
         test_acc = 0
         cnt = 0
 
         for batch_idx, data in enumerate(test_loader):
             contexts, questions, answers = data
+            batch_size = contexts.size()[0]
             contexts = Variable(contexts.long().cuda())
             questions = Variable(questions.long().cuda())
             answers = Variable(answers.cuda())
 
             model.state_dict().update(best_state)
             _, acc = model.get_loss(contexts, questions, answers)
-            test_acc += acc
-            cnt += 1
+            test_acc += acc * batch_size
+            cnt += batch_size
         print(f'[Task {task_id}, Epoch {epoch}] [Test] Accuracy : {test_acc / cnt: {5}.{4}}')
         with open('log.txt', 'a') as fp:
             fp.write(f'[Task {task_id}, Epoch {epoch}] [Test] Accuracy : {total_acc: {5}.{4}}' + '\n')
