@@ -23,7 +23,9 @@ Run the main python code
 
 ## Benchmarks
 
-Low accuracies compared to Xiong et al's are may due to different weight decay setting or lack of run time (I ran the model single time for each task).
+Low accuracies compared to Xiong et al's are may due to different weight decay setting or lack of run time (I ran the model twice for each task).
+
+Pretrained Models will be uploaded soon.
 
 > On some tasks, the accuracy was not stable across multiple
 runs. This was particularly problematic on QA3, QA17,
@@ -37,7 +39,7 @@ achieved the lowest validation set loss.
 | 2 | 96.3% | 99.7% |
 | 3 | 87.8% | 98.9% |
 | 4 | 100% | 100% |
-| 5 | 98.9% | 99.5% |
+| 5 | 99.4% | 99.5% |
 | 6 | 100% | 100% |
 | 7 | 97.2% | 97.6% |
 | 8 | 100% | 100% |
@@ -46,10 +48,10 @@ achieved the lowest validation set loss.
 | 11 | 100% | 100% |
 | 12 | 100% | 100% |
 | 13 | 100% | 100% |
-| 14 | 98.6% | 99.8% |
+| 14 | 98.8% | 99.8% |
 | 15 | 100% | 100% |
 | 16 | 47.4% | 54.7% |
-| 17 | 65.5% | 95.8% |
-| 18 | 92.7% | 97.9% |
-| 19 | 99.4% | 100% |
+| 17 | 87.9% | 95.8% |
+| 18 | 98.4% | 97.9% |
+| 19 | 100% | 100% |
 | 20 | 100% | 100% |
