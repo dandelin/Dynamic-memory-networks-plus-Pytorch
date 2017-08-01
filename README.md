@@ -25,7 +25,7 @@ Run the main python code
 
 Low accuracies compared to Xiong et al's are may due to different weight decay setting or lack of run time (I ran the model twice for each task).
 
-Pretrained Models will be uploaded soon.
+You can find pretrained models [here](https://github.com/dandelin/Dynamic-memory-networks-plus-Pytorch/tree/master/pretrained_models)
 
 > On some tasks, the accuracy was not stable across multiple
 runs. This was particularly problematic on QA3, QA17,
