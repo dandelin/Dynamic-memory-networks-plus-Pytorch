@@ -10,7 +10,7 @@
 | `fetch_data.sh` | shell script to fetch bAbI tasks (from [DMNs in Theano](https://github.com/YerevaNN/Dynamic-memory-networks-in-Theano)) |
 
 ## Usage
-Install [Pytorch v0.1.12](http://pytorch.org/)
+Install [Pytorch v0.1.12](http://pytorch.org/) and [Python 3.6.x](https://www.python.org/downloads/) (for [Literal String Interpolation](https://www.python.org/dev/peps/pep-0498/))
 
 Run the included shell script to fetch the data  
 
