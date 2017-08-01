@@ -23,15 +23,15 @@ Run the main python code
 
 ## Benchmarks
 
-Low accuracies compared to Xiong et al's are may due to different weight decay setting or lack of run time (I ran the model twice for each task).
-
-You can find pretrained models [here](https://github.com/dandelin/Dynamic-memory-networks-plus-Pytorch/tree/master/pretrained_models)
+Low accuracies compared to Xiong et al's are may due to different weight decay setting or the model's instability.
 
 > On some tasks, the accuracy was not stable across multiple
 runs. This was particularly problematic on QA3, QA17,
 and QA18. To solve this, we repeated training 10 times
 using random initializations and evaluated the model that
 achieved the lowest validation set loss.
+
+You can find pretrained models [here](https://github.com/dandelin/Dynamic-memory-networks-plus-Pytorch/tree/master/pretrained_models)
 
 | Task ID | This Repo | Xiong et al |
 | :---: | :---: | :---: |
